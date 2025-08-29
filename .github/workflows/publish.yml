@@ -1,0 +1,47 @@
+name: Deploy demo (static) to main site /demo
+
+on:
+  push:
+    branches: [ master ]   # 如果你的 demo 默认分支不是 main，请改
+
+env:
+  TARGET_REPO: 41xu/41xu.github.io   # 主站仓库
+  TARGET_BRANCH: master                        # 主站默认分支
+  TARGET_DIR: demo                           # 主站里的目标目录
+  SOURCE_DIR: .                              # demo 仓库根目录（纯静态，无构建）
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout demo repo
+        uses: actions/checkout@v4
+
+      - name: Checkout main site repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          ref: ${{ env.TARGET_BRANCH }}
+          token: ${{ secrets.MAIN_PAGE_READ_WRITE }}
+          path: main-site
+
+      - name: Copy files into /${{ env.TARGET_DIR }}
+        run: |
+          mkdir -p "main-site/${{ env.TARGET_DIR }}"
+          # 清空旧内容
+          rm -rf "main-site/${{ env.TARGET_DIR }}"/*
+          # 复制 demo 仓库的所有静态文件（排除 .git 与 workflow 自己）
+          rsync -av --exclude '.git' --exclude '.github' "${{ env.SOURCE_DIR }}/" "main-site/${{ env.TARGET_DIR }}/"
+
+      - name: Commit & Push changes (if any)
+        run: |
+          cd main-site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${{ env.TARGET_DIR }}"
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(demo): update from ${GITHUB_REPOSITORY}@${GITHUB_SHA::7}"
+            git push origin "${{ env.TARGET_BRANCH }}"
+          fi
